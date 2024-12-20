@@ -26,7 +26,6 @@ from zipfile import ZipFile
 import httpx
 import tornado
 from async_lru import alru_cache
-from packaging.version import Version
 from traitlets import CFloat, CInt, Unicode, config, observe
 
 from jupyterlab._version import __version__
@@ -58,25 +57,11 @@ https_proxy_url = (
     environ.get("https_proxy") or environ.get("HTTPS_PROXY") or http_proxy_url or all_proxy_url
 )
 
-# sniff ``httpx`` version for version-sensitive API
-_httpx_version = Version(httpx.__version__)
-_httpx_client_args = {}
-
-proxies = None
 xmlrpc_transport_override = None
 
 if http_proxy_url:
     http_proxy = urlparse(http_proxy_url)
     proxy_host, _, proxy_port = http_proxy.netloc.partition(":")
-
-    proxies = {
-        "http://": httpx.AsyncHTTPTransport(proxy=http_proxy_url),
-        "https://": httpx.AsyncHTTPTransport(proxy=https_proxy_url),
-    }
-
-    _httpx_client_args = {
-        ("mounts" if _httpx_version >= Version("0.28.0") else "proxies"): proxies,
-    }
 
     xmlrpc_transport_override = ProxiedTransport()
     xmlrpc_transport_override.set_proxy(proxy_host, proxy_port)
@@ -140,7 +125,8 @@ class PyPIExtensionManager(ExtensionManager):
         parent: Optional[config.Configurable] = None,
     ) -> None:
         super().__init__(app_options, ext_options, parent)
-        self._httpx_client = httpx.AsyncClient(**_httpx_client_args)
+        # httpx itself will take care of the proxy
+        self._httpx_client = httpx.AsyncClient()
         # Set configurable cache size to fetch function
         self._fetch_package_metadata = partial(_fetch_package_metadata, self._httpx_client)
         self._observe_package_metadata_cache_size({"new": self.package_metadata_cache_size})
